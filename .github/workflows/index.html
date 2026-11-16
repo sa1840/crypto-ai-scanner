@@ -1,0 +1,158 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypto AI Scanner</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b1020;color:#e8edf7;font-family:Arial,sans-serif}
+header{padding:22px;background:#121a30;border-bottom:1px solid #26324b}
+h1{margin:0;font-size:23px}
+.sub{color:#91a0bb;font-size:13px;margin-top:7px}
+main{max-width:1150px;margin:auto;padding:16px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.card{background:#151f35;padding:15px;border:1px solid #263650;border-radius:12px}
+.card small{color:#91a0bb}
+.card strong{display:block;font-size:23px;margin-top:8px}
+.controls{display:flex;gap:9px;flex-wrap:wrap;margin:18px 0}
+input,select,button{padding:12px;border-radius:8px;border:1px solid #34425e;background:#151f35;color:white}
+input{flex:1;min-width:150px}
+button{cursor:pointer}
+.table-wrap{overflow-x:auto;background:#151f35;border-radius:12px}
+table{width:100%;border-collapse:collapse;min-width:700px}
+th,td{padding:13px;text-align:left;border-bottom:1px solid #29354c;font-size:13px}
+th{color:#91a0bb}
+.buy{color:#40df99;font-weight:bold}
+.sell{color:#ff7373;font-weight:bold}
+.hold{color:#f4cf68;font-weight:bold}
+.no{color:#9eaccc;font-weight:bold}
+footer{color:#8290aa;font-size:12px;padding:18px 0}
+@media(max-width:500px){.stats{grid-template-columns:repeat(2,1fr)}h1{font-size:20px}}
+</style>
+</head>
+<body>
+<header>
+<h1>🚀 Crypto AI Scanner</h1>
+<div class="sub">Binance Spot • EMA 9/20 • RSI • Technical Signals</div>
+</header>
+<main>
+<div class="stats">
+<div class="card"><small>Scanned Coins</small><strong id="total">--</strong></div>
+<div class="card"><small>BUY Signals</small><strong id="buys">--</strong></div>
+<div class="card"><small>SELL Signals</small><strong id="sells">--</strong></div>
+</div>
+<div class="controls">
+<input id="search" placeholder="Search BTC, ETH, SOL...">
+<select id="tf">
+<option value="15m">15 Minutes</option>
+<option value="1h">1 Hour</option>
+<option value="4h">4 Hours</option>
+</select>
+<select id="filter">
+<option value="ALL">All Signals</option>
+<option value="BUY">BUY</option>
+<option value="SELL">SELL</option>
+<option value="HOLD">HOLD</option>
+<option value="NO TRADE">NO TRADE</option>
+</select>
+<button onclick="loadData()">Refresh</button>
+</div>
+<div id="status" class="sub">Loading scanner data...</div>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th>Coin</th><th>Price</th><th>Rating</th><th>Signal</th><th>EMA 9</th><th>EMA 20</th><th>RSI</th>
+</tr></thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+<footer>
+Data from Binance Spot public market data. Technical ratings are not profit probabilities.
+<br>Auto-refresh every 30 seconds. Underlying scan runs on GitHub Actions.
+</footer>
+</main>
+<script>
+let allData=[];
+
+function fmt(n){
+ if(n===undefined||n===null)return "--";
+ return Number(n).toLocaleString("en-US",{maximumFractionDigits:8});
+}
+
+function render(){
+ const tf=document.getElementById("tf").value;
+ const filter=document.getElementById("filter").value;
+ const search=document.getElementById("search").value.toUpperCase().replace("/","");
+
+ let data=allData.filter(x=>{
+  const coin=x.symbol.replace("/","").toUpperCase();
+  return x.timeframe===tf &&
+  (!search||coin.includes(search)) &&
+  (filter==="ALL"||x.signal===filter);
+ });
+
+ document.getElementById("total").textContent=
+  new Set(allData.map(x=>x.symbol)).size;
+ document.getElementById("buys").textContent=
+  allData.filter(x=>x.timeframe===tf&&x.signal==="BUY").length;
+ document.getElementById("sells").textContent=
+  allData.filter(x=>x.timeframe===tf&&x.signal==="SELL").length;
+
+ const tbody=document.getElementById("rows");
+ tbody.innerHTML="";
+
+ data.sort((a,b)=>b.score-a.score);
+
+ if(!data.length){
+  tbody.innerHTML='<tr><td colspan="7">No matching data yet.</td></tr>';
+  return;
+ }
+
+ for(const x of data){
+  const cls=x.signal==="BUY"?"buy":
+   x.signal==="SELL"?"sell":
+   x.signal==="HOLD"?"hold":"no";
+
+  const tr=document.createElement("tr");
+  const values=[
+   x.symbol,fmt(x.price),x.score+"/100",
+   x.signal,fmt(x.ema9),fmt(x.ema20),fmt(x.rsi)
+  ];
+
+  values.forEach((v,i)=>{
+   const td=document.createElement("td");
+   td.textContent=v;
+   if(i===3)td.className=cls;
+   tr.appendChild(td);
+  });
+  tbody.appendChild(tr);
+ }
+}
+
+async function loadData(){
+ try{
+  const response=await fetch("data/latest.json?t="+Date.now());
+  if(!response.ok)throw new Error("Data not available yet");
+  const data=await response.json();
+  allData=data.results||[];
+  document.getElementById("status").textContent=
+   "Last scan: "+(data.updated_at||"Unknown")+
+   " | Coins scanned: "+(data.scanned_coins||0);
+  render();
+ }catch(e){
+  document.getElementById("status").textContent=
+   "Waiting for first successful scan. "+e.message;
+ }
+}
+
+document.getElementById("search").addEventListener("input",render);
+document.getElementById("tf").addEventListener("change",render);
+document.getElementById("filter").addEventListener("change",render);
+
+loadData();
+setInterval(loadData,30000);
+</script>
+</body>
+</html>
